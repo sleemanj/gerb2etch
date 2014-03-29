@@ -26,6 +26,17 @@ For debian/ubuntu etc..
 
 should about cover it.
 
+For windows users, you're largely on your own, but cygwin has bash, grep, bc and imagemagick:
+http://cygwin.com/install.html
+
+Gerbv has a windows version:
+http://sourceforge.net/projects/gerbv/files/gerbv/gerbv-2.6.1/
+
+For mac users, you're largely on your own, but it looks like Fink has everything you need:
+http://www.finkproject.org/
+so after installing fink probably the same apt-get install as above?
+
+
 Installation
 ------------
 Get the requirements above.
