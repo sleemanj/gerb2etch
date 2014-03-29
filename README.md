@@ -7,15 +7,17 @@ Provided with gerber files exported from your favourite PCB design tool, this sc
 
 Requirements
 ------------
-  bash
-  gerbv
-  imagemagick
-  grep
-  bc
+*  bash
+*  gerbv
+*  imagemagick
+*  grep
+*  bc
 
 
 For debian/ubuntu etc..
-  sudo apt-get install bash gerbv imagemagick grep bc
+
+     sudo apt-get install bash gerbv imagemagick grep bc
+
 should about cover it.
 
 Installation
@@ -25,13 +27,13 @@ Put gerb2etch somewhere make it executable
 
 Quick start
 ------------
-  export gerbers from your favourite tool into a directory
-  open a shell/console
-  cd into the directory with the gerbers
-  run gerb2etch
-  open artwork.pdf in your PDF viewer of choice
-  
-  See gerb2etch -h
+
+*  export gerbers from your favourite tool into a directory
+*  open a shell/console
+*  cd into the directory with the gerbers
+*  run gerb2etch
+*  open the generated "artwork.pdf" file in your PDF viewer of choice
+*  See gerb2etch -h
   
   
 Tips
