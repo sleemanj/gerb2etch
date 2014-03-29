@@ -1,0 +1,460 @@
+#!/bin/bash
+RESOLUTION=600            # Resolution to output, below 600 not recommended for etching
+PRE_TRIM=1                # 1/0 Trim the source image (you must have an outline in the image in this case)
+B_WHITE=1                 # padding to alignment frame (mm)
+B_BLACK=0.25              # alignment frame border width (mm)
+B_SEPAR=30.4              # separation width between frames (mm)
+ROTATE=0                  # rotate the images first
+NEGATIVE="copper"         # these will be inverted to produce artwork for negative acting resist
+                          # for dry film, set copper negative, for toner transfer and positive resist nothing negative
+                          # you can also put silk and mask in negative if useful to you
+WHAT=""                   # copper mask silk top bottom; blank for all turned on
+EOC=$((LINENO-1))
+
+while getopts ":r:s:p:b:zn:tuh" OPT
+do
+  case $OPT in
+    h)
+      cat <<EOM
+Usage: $0 [options] [layer] [layer] ...
+ 
+Options
+-------
+   -r Resolution in dpi, eg "-r 1200"   
+   -u Short hand for negative acting UV exposure (eg dry-film), negates copper, sets layer output to copper and mask
+   -t Short hand for toner transfer, negates mask (but doesn't output by default), sets layer output to copper only
+   -z Rotate artwork (portrait becomes landscape, landscape becomes portrait)
+   
+   -n Specifically set the layers to negate, eg -n "copper mask" makes copper and mask negative
+       Definition of negative
+       ----------------------
+         copper: traces will be transparent
+         mask:   pads will be transparent
+         silk:   text will be transparent
+   
+   -p Padding in mm from edge of artworks to edge of alignment frames, always transparent, eg "-p 1"
+   -b Frame border width in mm, eg "-b 0.25"
+   -s Separation distance between artwork frames in mm, eg "-s 30.4"
+   
+Layers   
+-------
+   Available layers are copper mask silk top bottom
+   
+   Eg, to get just the copper artworks
+   : $0 [options] copper
+   
+   For just the bottom artworks
+   :  $0 [options] bottom
+   
+   For just the copper on the bottom
+   :  $0 [options] copper bottom
+   
+   For just the copper and silk on the top
+   :  $0 [options] copper silk top
+   
+Defaults
+--------
+   Defaults can be set by editing the configuration variables at the top of $0
+
+$(cat $0 | head -$EOC | tail -n +2)
+
+EOM
+exit
+    ;;
+    
+    u)
+      NEGATIVE="copper"      
+      WHAT="copper mask"
+    ;;
+    
+    t)
+      NEGATIVE="mask" 
+      WHAT="copper"
+    ;;
+    
+    n)
+      NEGATIVE="$OPTARG"
+    ;;
+    
+    z)
+      ROTATE=1
+    ;;
+    
+    p) 
+      B_WHITE=$OPTARG
+      if echo $B_WHITE | grep -q "[^0-9.]"
+      then
+        echo "Invalid padding width: $OPTARG" >&2
+        exit
+      fi
+    ;;
+    
+    b) 
+      B_BLACK=$OPTARG
+      if echo $B_BLACK | grep -q "[^0-9.]"
+      then
+        echo "Invalid border width: $OPTARG" >&2
+        exit
+      fi
+    ;;
+        
+    s)
+      B_SEPAR=$OPTARG
+      if echo $B_SEPAR | grep -q "[^0-9.]"
+      then
+       echo "Invalid separation width: $OPTARG" >&2
+       exit
+      fi
+    ;;
+    
+    r)
+      RESOLUTION=$OPTARG
+      if echo $RESOLUTION | grep -q "[^0-9]"
+      then
+        echo "Invalid Resolution: $OPTARG" >&2
+        exit
+      fi
+    ;;
+    
+    \?)
+      echo "Unknown Option: -$OPTARG" >&2
+      exit      
+    ;;
+  esac
+done
+
+shift $((OPTIND-1))
+Z="$@" # I dunno what's going on here, test seems to misbehave if I use $@ there
+test -n "$Z" && WHAT="$Z"
+
+    #         exit             
+# See if a layer is desired
+function layer
+{
+  for word in $WHAT
+  do
+    [[ $word = $1 ]] && return 0
+  done
+  return 1
+}
+
+# Default to all layers turned on
+if [ "$WHAT" = "" ]
+then
+  WHAT="copper mask silk top bottom"
+elif ! ( layer top || layer bottom )
+then
+ WHAT="$WHAT top bottom"
+fi
+echo
+echo "Settings"
+echo "------------------------------------------------------"
+echo "Resolution: $RESOLUTION (dpi)"
+echo "Padding: $B_WHITE (mm)"
+echo "Border: $B_BLACK (mm)"
+echo "Separation: $B_SEPAR (mm)"
+[ $ROTATE -eq 1 ] && echo "Rotate: On"
+[ $ROTATE -eq 0 ] && echo "Rotate: Off"
+echo "Negative Output: $NEGATIVE"
+echo "Artwork To Create: $WHAT"
+echo "------------------------------------------------------"
+echo 
+
+# This gets filled with some temporary files to delete
+CLEANUP=
+
+# Gerber Input
+# Look for gerbers with standard extentions and rename them to some known file names
+( ls | grep -i \\.gm1  >/dev/null ) && cp "$(ls | grep -i \\.gm1 | head -1)" BoardOutline.gbr   && CLEANUP="$CLEANUP BoardOutline.gbr"
+( ls | grep -i \\.oln  >/dev/null ) && cp "$(ls | grep -i \\.oln | head -1)" BoardOutline.gbr   && CLEANUP="$CLEANUP BoardOutline.gbr"
+( ls | grep -i  drill\\.txt >/dev/null) && cp "$(ls | grep -i drill\\.txt | head -1)" Holes.gbr && CLEANUP="$CLEANUP Holes.gbr"
+
+if layer top 
+then
+  layer copper && ( ls | grep -i \\.gtl  >/dev/null ) && cp "$(ls | grep -i \\.gtl | head -1)" Top.gbr      && CLEANUP="$CLEANUP Top.gbr"
+  layer silk   && ( ls | grep -i \\.gto  >/dev/null ) && cp "$(ls | grep -i \\.gto | head -1)" TopSilk.gbr  && CLEANUP="$CLEANUP TopSilk.gbr"
+  layer mask   && ( ls | grep -i \\.gts  >/dev/null ) && cp "$(ls | grep -i \\.gts | head -1)" TopMask.gbr  && CLEANUP="$CLEANUP TopMask.gbr"
+fi
+
+if layer bottom
+then
+  layer copper && ( ls | grep -i \\.gbl >/dev/null  ) && cp "$(ls | grep -i \\.gbl | head -1)" Bottom.gbr    && CLEANUP="$CLEANUP Bottom.gbr"
+  layer silk && ( ls | grep -i \\.gbo >/dev/null  ) && cp "$(ls | grep -i \\.gbo | head -1)" BottomSilk.gbr  && CLEANUP="$CLEANUP BottomSilk.gbr"
+  layer mask && ( ls | grep -i \\.gbs >/dev/null  ) && cp "$(ls | grep -i \\.gbs | head -1)" BottomMask.gbr  && CLEANUP="$CLEANUP BottomMask.gbr"
+fi
+
+# Convert the gerbers into pngs with some known file names
+if ( [ -f Bottom.gbr ] || [ -f BottomMask.gbr ] || [ -f BottomSilk.gbr ] || [ -f Top.gbr ] || [ -f TopMask.gbr ] || [ -f TopSilk.gbr ] )
+then
+  echo "Converting Gerbers To PNG"
+  if layer bottom
+  then
+    GBR_DRILL="$( [ -f Holes.gbr ] && echo --foreground="#FFFFFFFF" Holes.gbr)"
+    GBR_OUTLINE="$( [ -f BoardOutline.gbr ] && echo --foreground="#000000FF" BoardOutline.gbr)"   
+    layer copper \
+      && [ -f Bottom.gbr ] \
+      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=copper_bottom.png    --export=png $GBR_DRILL  --foreground="#000000FF" Bottom.gbr $GBR_OUTLINE \
+      && CLEANUP="$CLEANUP copper_bottom.png"
+      
+    layer mask \
+      && [ -f BottomMask.gbr ] \
+      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=etch_mask_bottom.png --export=png $GBR_DRILL  --foreground="#000000FF" BottomMask.gbr $GBR_OUTLINE \
+      && CLEANUP="$CLEANUP etch_mask_bottom.png"
+      
+    layer silk \
+      && [ -f BottomSilk.gbr ] \
+      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=silk_bottom.png      --export=png $GBR_DRILL  --foreground="#000000FF" BottomSilk.gbr $GBR_OUTLINE   \
+      && CLEANUP="$CLEANUP silk_bottom.png"
+  fi
+
+  if layer top
+  then
+    GBR_OUTLINE="$( [ -f BoardOutline.gbr ] && echo --foreground="#000000FF" BoardOutline.gbr)"
+    GBR_DRILL="$( [ -f Holes.gbr ] && echo --foreground="#FFFFFFFF" Holes.gbr)"
+    layer copper \
+      && [ -f Top.gbr ] \
+      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=copper_top.png    --export=png $GBR_DRILL --foreground="#000000FF"  Top.gbr $GBR_OUTLINE \
+      && convert -density $RESOLUTION copper_top.png -flop copper_top_mirror.png  \
+      && CLEANUP="$CLEANUP copper_top_mirror.png copper_top.png"
+      
+    layer mask \
+      && [ -f TopMask.gbr ] \
+      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=etch_mask_top.png --export=png $GBR_DRILL --foreground="#000000FF"  TopMask.gbr $GBR_OUTLINE \
+      && convert -density $RESOLUTION etch_mask_top.png -flop etch_mask_top_mirror.png  \
+      && CLEANUP="$CLEANUP etch_mask_top_mirror.png etch_mask_top.png"
+      
+    layer silk \
+      && [ -f TopSilk.gbr ] \
+      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=silk_top.png      --export=png $GBR_DRILL --foreground="#000000FF"  TopSilk.gbr $GBR_OUTLINE \
+      && convert -density $RESOLUTION silk_top.png -flop silk_top_mirror.png    \
+      && CLEANUP="$CLEANUP silk_top_mirror.png silk_top.png"
+  fi  
+fi
+
+
+
+function need_invert
+{
+  for word in $NEGATIVE
+  do
+    if (echo $1 | grep -F $word - >/dev/null)
+    then
+      return 0
+    fi
+  done
+  
+  return 1
+}
+
+function out
+{
+        echo "out/$(basename $1).png"
+}
+
+# Convert MM to Pixels at $RESOLUTION  dpi
+function mm_px
+{
+  # 25.4 mm per inch
+  calc "( 1 / 25.4 * $RESOLUTION ) * ( $1 )" 
+}
+
+function calc
+{
+  bc -l <<EOF
+  
+# http://www.pixelbeat.org/scripts/bc
+# License: LGPLv2
+# Author:
+#    http://www.pixelbeat.org/
+# Notes:
+#    I only use bc when python is not available.
+#    Personally I have this file in ~/bin/bc so
+#    that I can just invoke bc as normal and have these
+#    extra functions available.
+# Changes:
+#    V0.1, 11 Apr 2007, Initial release
+
+define min(x,y) {
+    if (x<y) return x
+    return y
+}
+
+define max(x,y) {
+    if (x>y) return x
+    return y
+}
+
+define abs(x) {
+    if (x<0) return -x
+    return x
+}
+
+/* take integer part */
+define int(x) {
+    auto old_scale   /* variables global by default */
+    old_scale=scale  /* scale is global */
+    scale=0; ret=x/1
+    scale=old_scale
+    return ret
+}
+
+/* round to nearest integer */
+define round(x) {
+    if (x<0) x-=.5 else x+=.5
+    return int(x)
+}
+
+/* smallest integer >= arg */
+define ceil(x) {
+    auto intx
+    intx=int(x)
+    if (intx<x) intx+=1
+    return intx
+}
+
+/* largest integer <= arg */
+define floor(x) {
+    return -ceil(-x)
+}
+
+/* round x to previous multiple of y */
+define round_down(x,y) {
+    return y*floor(x/y)
+}
+
+/* round x to next multiple of y */
+define round_up(x,y) {
+    return y*ceil(x/y)
+}
+
+/* round x to nearest multiple of y */
+define round_to(x,y) {
+    return y*round(x/y)
+}
+
+/* Greatest Common Divisor or Highest Common Factor of x and y */
+/* Note when people say Lowest Common Denominator they usually mean this */
+define gcd(x,y) {
+     if (y==0) return x
+     return gcd(y,x%y) /* anything that divides into x and y also divides into the remainder of x/y */
+}
+
+/* Lowest Common Multiple of x and y */
+/* Lowest Common Denominator of fractions is LCM of the denominators */
+define lcm(x,y) {
+    return (x*y/gcd(x,y))
+}
+    
+    $1
+EOF
+}
+
+function floor
+{
+  echo "scale = 0\n($1)/1" | bc -l
+}
+
+# Add registration
+function alignments
+{
+  cp $1 $(out $1)
+  chmod u+w $(out $1)
+  
+  echo $(out $1)
+  
+  # We want to use half the separation as the border
+  B_HALF_SEPAR=$(calc "($B_SEPAR / 2)")
+
+  # Vertical Bar Points 
+  AX1=$(calc "0 + $(mm_px "$B_HALF_SEPAR")")
+  AY1=$(mm_px "$B_HALF_SEPAR + $B_BLACK")
+  AX2=$(calc "$AX1 - $(mm_px 1.25)")
+  AY2=$(calc "$AY1 + $(mm_px 5)")
+
+  # Horizontal Bar Points
+  BX1=$(calc "0 + $(mm_px "$B_HALF_SEPAR + $B_BLACK")")
+  BY1=$(mm_px "$B_HALF_SEPAR")
+  BX2=$(calc "$BX1 + $(mm_px 10)")
+  BY2=$(calc "$BY1 - $(mm_px 1.25)")
+
+  POINTSIZE=$(calc "min(($(mm_px $(calc "$B_HALF_SEPAR * 0.8")) / $RESOLUTION * 72), 14)")
+  
+mogrify -density $RESOLUTION \
+        $(need_invert $1 && echo "-monochrome -colors 2 -depth 1 -negate")  \
+        $( [ $ROTATE -eq 1 ] && ( ( ( echo $1 | grep -q "top" ) && echo "-rotate -90 +repage") || ( ( echo $1 | grep -q "bottom" ) && echo "-rotate 90 +repage") ) ) \
+        "$( [ $PRE_TRIM -eq 1 ] && echo "-trim" )" \
+        +repage \
+    \
+        -bordercolor white -border $(mm_px $B_WHITE)  \
+        -bordercolor black -border $(mm_px $B_BLACK)  \
+        -bordercolor white -border $(mm_px $B_HALF_SEPAR)  \
+        +repage \
+    \
+        -fill black -gravity South -pointsize $POINTSIZE -annotate +0+$(mm_px $(calc "$B_HALF_SEPAR * 0.1")) $(if ( echo $1 | grep -q "top" ); then echo 'TOP'; else echo 'BOTTOM'; fi ) \
+        +repage \
+    \
+        $(: @@@@ COMMENT -- alignment bars -- for the bottom side, add to top left, and remirror it back @@@@ ) \
+        $( ( echo $1 | grep -q bottom ) && echo '-flop' )  \
+        -fill black -strokewidth 0 -draw "rectangle $AX1,$AY1 $AX2,$AY2"\
+        -fill black -strokewidth 0 -draw "rectangle $BX1,$BY1 $BX2,$BY2"\
+        $( ( echo $1 | grep -q bottom ) && echo '-flop' ) \
+        +repage \
+    \
+        $(: @@@@ COMMENT -- remove the far left or right separation border depending on top/bottom @@@@ ) \
+        -gravity $(if ( echo $1 | grep -q "top" ); then echo East; else echo West; fi ) -chop $(mm_px $B_HALF_SEPAR)x0 \
+        +repage \
+      $(out $1) 2>/dev/null
+# echo "Done"
+   WIDTH=$(calc "floor(($(identify -format %w -density $RESOLUTION  $(out $1)) / $RESOLUTION ) * 25.4)" )
+}
+
+echo "Creating Artworks"
+
+rm -rf out
+if [ ! -d out ]
+then
+  mkdir out
+fi
+
+COPPER_BOTTOM=$(ls | grep copper_bottom\\. | head -1)
+COPPER_TOP=$(ls  | grep copper_top_mirror\\. | head -1)
+
+MASK_BOTTOM=$(ls | grep etch_mask_bottom\\. | head -1)
+MASK_TOP=$(ls | grep etch_mask_top_mirror\\. | head -1)
+
+SILK_BOTTOM=$(ls | grep silk_bottom\\. | head -1)
+SILK_TOP=$(ls | grep silk_top_mirror\\. | head -1)
+
+# This will be set by alignments, we use it later to decide if to use 2 columns in the pdf
+WIDTH= 
+
+if layer copper
+then
+  layer bottom && [ -n "$COPPER_BOTTOM" ] && alignments $COPPER_BOTTOM
+  layer top    && [ -n "$COPPER_TOP" ]    && alignments $COPPER_TOP  
+fi
+
+if layer mask
+then
+  layer bottom && [ -n "$MASK_BOTTOM" ]   && alignments $MASK_BOTTOM
+  layer top    && [ -n "$MASK_TOP" ]      && alignments $MASK_TOP    
+fi
+
+if layer silk
+then
+  layer bottom && [ -n "$SILK_BOTTOM" ]   && alignments $SILK_BOTTOM
+  layer top    && [ -n "$SILK_TOP" ]      && alignments $SILK_TOP      
+fi
+
+echo "Creating PDF"
+if [ $WIDTH -lt 96 ] 
+then
+  # Put two across
+  montage -density $RESOLUTION -mode concatenate -tile 2x out/*.png artwork.pdf 2>/dev/null
+else
+  # Put one across
+  montage -density $RESOLUTION -mode concatenate -tile 1x out/*.png artwork.pdf 2>/dev/null
+fi
+
+echo "Done"
+[ -n "$CLEANUP" ] && rm $CLEANUP
