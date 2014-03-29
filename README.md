@@ -5,6 +5,12 @@ Bash script to convert gerber (and drill) files into a PDF containing artwork su
 
 Provided with gerber files exported from your favourite PCB design tool, this script uses various tools to create a PDF file containing positive or negative artwork complete with frames and corner markings which you can use in various DIY pcb creating.
 
+Low resolution example of generated artwork
+-------------------------------------------
+Show below is what is generated in the PDF for a copper and mask, silk is also available.  This is a low resolution screenshot, you can set arbitrary resolution (I wouldn't go higher than 1200 dpi unless you have a fast computer and time to spare).  This eample has a negative copper and positive mask, you can specifiy the negativity of any layer.
+
+![Alt text](/example-output.jpg "Exmple")
+
 Requirements
 ------------
 *  bash
