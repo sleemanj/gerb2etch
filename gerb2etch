@@ -11,7 +11,7 @@ NEGATIVE="copper"         # these will be inverted to produce artwork for negati
 WHAT=""                   # copper mask silk top bottom; blank for all turned on
 EOC=$((LINENO-1))
 
-while getopts ":r:s:p:b:zn:tuh" OPT
+while getopts ":r:s:p:b:zxn:tuh" OPT
 do
   case $OPT in
     h)
@@ -35,6 +35,8 @@ Options
    -p Padding in mm from edge of artworks to edge of alignment frames, always transparent, eg "-p 1"
    -b Frame border width in mm, eg "-b 0.25"
    -s Separation distance between artwork frames in mm, eg "-s 30.4"
+   
+   -x Do not pre-trim the artwork, this means that the border added by gerbv will be kept in the artwork.
    
 Layers   
 -------
@@ -78,6 +80,10 @@ exit
     
     z)
       ROTATE=1
+    ;;
+    
+    x)
+      PRE_TRIM=0
     ;;
     
     p) 
@@ -167,6 +173,7 @@ CLEANUP=
 # Look for gerbers with standard extentions and rename them to some known file names
 ( ls | grep -i \\.gm1  >/dev/null ) && cp "$(ls | grep -i \\.gm1 | head -1)" BoardOutline.gbr   && CLEANUP="$CLEANUP BoardOutline.gbr"
 ( ls | grep -i \\.oln  >/dev/null ) && cp "$(ls | grep -i \\.oln | head -1)" BoardOutline.gbr   && CLEANUP="$CLEANUP BoardOutline.gbr"
+( ls | grep -i Edges\\.gbr  >/dev/null ) && cp "$(ls | grep -i Edges\\.gbr | head -1)" BoardOutline.gbr   && CLEANUP="$CLEANUP BoardOutline.gbr"
 ( ls | grep -i  drill\\.txt >/dev/null) && cp "$(ls | grep -i drill\\.txt | head -1)" Holes.gbr && CLEANUP="$CLEANUP Holes.gbr"
 
 if layer top 
@@ -382,7 +389,7 @@ function alignments
 mogrify -density $RESOLUTION \
         $(need_invert $1 && echo "-monochrome -colors 2 -depth 1 -negate")  \
         $( [ $ROTATE -eq 1 ] && ( ( ( echo $1 | grep -q "top" ) && echo "-rotate -90 +repage") || ( ( echo $1 | grep -q "bottom" ) && echo "-rotate 90 +repage") ) ) \
-        "$( [ $PRE_TRIM -eq 1 ] && echo "-trim" )" \
+        $( [ $PRE_TRIM -eq 1 ] && echo "-trim" ) \
         +repage \
     \
         -bordercolor white -border $(mm_px $B_WHITE)  \

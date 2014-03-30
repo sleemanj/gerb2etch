@@ -87,6 +87,8 @@ Options
     -p Padding in mm from edge of artworks to edge of alignment frames, always transparent, eg "-p 1"
     -b Frame border width in mm, eg "-b 0.25"
     -s Separation distance between artwork frames in mm, eg "-s 30.4"
+
+    -x Do not pre-trim the artwork, this means that the border added by gerbv will be kept in the artwork.
    
 Layers   
 -------
