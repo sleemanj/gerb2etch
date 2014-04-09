@@ -18,6 +18,7 @@ Requirements
 *  imagemagick
 *  grep
 *  bc
+*  for drill shrinking, sed is required also
 
 
 For debian/ubuntu etc..
