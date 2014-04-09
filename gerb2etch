@@ -5,13 +5,16 @@ B_WHITE=1                 # padding to alignment frame (mm)
 B_BLACK=0.25              # alignment frame border width (mm)
 B_SEPAR=30.4              # separation width between frames (mm)
 ROTATE=0                  # rotate the images first
+SHRINK_DRILL=0            # shrnk drills
+SHRINK_MIN_METRIC=0.3     # shrink drill minimum size in mm
+SHRINK_PERCENT=60         # shrink drill by percent
 NEGATIVE="copper"         # these will be inverted to produce artwork for negative acting resist
                           # for dry film, set copper negative, for toner transfer and positive resist nothing negative
                           # you can also put silk and mask in negative if useful to you
 WHAT=""                   # copper mask silk top bottom; blank for all turned on
 EOC=$((LINENO-1))
 
-while getopts ":r:s:p:b:zxn:tuh" OPT
+while getopts ":r:s:p:b:zxn:tuhd" OPT
 do
   case $OPT in
     h)
@@ -35,6 +38,10 @@ Options
    -p Padding in mm from edge of artworks to edge of alignment frames, always transparent, eg "-p 1"
    -b Frame border width in mm, eg "-b 0.25"
    -s Separation distance between artwork frames in mm, eg "-s 30.4"
+   
+   -d Shrink drill holes by $SHRINK_PERCENT% (but no smaller than $SHRINK_MIN_METRIC mm)
+      Note that the pads do not shrink, just the etched holes, useful for better centering of drills
+      especially in larger holes.
    
    -x Do not pre-trim the artwork, this means that the border added by gerbv will be kept in the artwork.
    
@@ -84,6 +91,10 @@ exit
     
     x)
       PRE_TRIM=0
+    ;;
+    
+    d)
+      SHRINK_DRILL=1  
     ;;
     
     p) 
@@ -163,6 +174,11 @@ echo "Separation: $B_SEPAR (mm)"
 [ $ROTATE -eq 0 ] && echo "Rotate: Off"
 echo "Negative Output: $NEGATIVE"
 echo "Artwork To Create: $WHAT"
+if [ $SHRINK_DRILL -eq 1 ] 
+then
+  echo "Shrink Drills By: $SHRINK_PERCENT%"
+  echo "Minimum Drill Size: $SHRINK_MIN_METRIC mm"  
+fi
 echo "------------------------------------------------------"
 echo 
 
@@ -175,6 +191,7 @@ CLEANUP=
 ( ls | grep -i \\.oln  >/dev/null ) && cp "$(ls | grep -i \\.oln | head -1)" BoardOutline.gbr   && CLEANUP="$CLEANUP BoardOutline.gbr"
 ( ls | grep -i Edges\\.gbr  >/dev/null ) && cp "$(ls | grep -i Edges\\.gbr | head -1)" BoardOutline.gbr   && CLEANUP="$CLEANUP BoardOutline.gbr"
 ( ls | grep -i  drill\\.txt >/dev/null) && cp "$(ls | grep -i drill\\.txt | head -1)" Holes.gbr && CLEANUP="$CLEANUP Holes.gbr"
+( ls | grep -i  \\.drl >/dev/null) && cp "$(ls | grep -i \\.drl | head -1)" Holes.gbr && CLEANUP="$CLEANUP Holes.gbr"
 
 if layer top 
 then
@@ -190,80 +207,6 @@ then
   layer mask && ( ls | grep -i \\.gbs >/dev/null  ) && cp "$(ls | grep -i \\.gbs | head -1)" BottomMask.gbr  && CLEANUP="$CLEANUP BottomMask.gbr"
 fi
 
-# Convert the gerbers into pngs with some known file names
-if ( [ -f Bottom.gbr ] || [ -f BottomMask.gbr ] || [ -f BottomSilk.gbr ] || [ -f Top.gbr ] || [ -f TopMask.gbr ] || [ -f TopSilk.gbr ] )
-then
-  echo "Converting Gerbers To PNG"
-  if layer bottom
-  then
-    GBR_DRILL="$( [ -f Holes.gbr ] && echo --foreground="#FFFFFFFF" Holes.gbr)"
-    GBR_OUTLINE="$( [ -f BoardOutline.gbr ] && echo --foreground="#000000FF" BoardOutline.gbr)"   
-    layer copper \
-      && [ -f Bottom.gbr ] \
-      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=copper_bottom.png    --export=png $GBR_DRILL  --foreground="#000000FF" Bottom.gbr $GBR_OUTLINE \
-      && CLEANUP="$CLEANUP copper_bottom.png"
-      
-    layer mask \
-      && [ -f BottomMask.gbr ] \
-      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=etch_mask_bottom.png --export=png $GBR_DRILL  --foreground="#000000FF" BottomMask.gbr $GBR_OUTLINE \
-      && CLEANUP="$CLEANUP etch_mask_bottom.png"
-      
-    layer silk \
-      && [ -f BottomSilk.gbr ] \
-      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=silk_bottom.png      --export=png $GBR_DRILL  --foreground="#000000FF" BottomSilk.gbr $GBR_OUTLINE   \
-      && CLEANUP="$CLEANUP silk_bottom.png"
-  fi
-
-  if layer top
-  then
-    GBR_OUTLINE="$( [ -f BoardOutline.gbr ] && echo --foreground="#000000FF" BoardOutline.gbr)"
-    GBR_DRILL="$( [ -f Holes.gbr ] && echo --foreground="#FFFFFFFF" Holes.gbr)"
-    layer copper \
-      && [ -f Top.gbr ] \
-      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=copper_top.png    --export=png $GBR_DRILL --foreground="#000000FF"  Top.gbr $GBR_OUTLINE \
-      && convert -density $RESOLUTION copper_top.png -flop copper_top_mirror.png  \
-      && CLEANUP="$CLEANUP copper_top_mirror.png copper_top.png"
-      
-    layer mask \
-      && [ -f TopMask.gbr ] \
-      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=etch_mask_top.png --export=png $GBR_DRILL --foreground="#000000FF"  TopMask.gbr $GBR_OUTLINE \
-      && convert -density $RESOLUTION etch_mask_top.png -flop etch_mask_top_mirror.png  \
-      && CLEANUP="$CLEANUP etch_mask_top_mirror.png etch_mask_top.png"
-      
-    layer silk \
-      && [ -f TopSilk.gbr ] \
-      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=silk_top.png      --export=png $GBR_DRILL --foreground="#000000FF"  TopSilk.gbr $GBR_OUTLINE \
-      && convert -density $RESOLUTION silk_top.png -flop silk_top_mirror.png    \
-      && CLEANUP="$CLEANUP silk_top_mirror.png silk_top.png"
-  fi  
-fi
-
-
-
-function need_invert
-{
-  for word in $NEGATIVE
-  do
-    if (echo $1 | grep -F $word - >/dev/null)
-    then
-      return 0
-    fi
-  done
-  
-  return 1
-}
-
-function out
-{
-        echo "out/$(basename $1).png"
-}
-
-# Convert MM to Pixels at $RESOLUTION  dpi
-function mm_px
-{
-  # 25.4 mm per inch
-  calc "( 1 / 25.4 * $RESOLUTION ) * ( $1 )" 
-}
 
 function calc
 {
@@ -359,6 +302,128 @@ EOF
 function floor
 {
   echo "scale = 0\n($1)/1" | bc -l
+}
+
+
+if ( [ -f Holes.gbr ] && [ $SHRINK_DRILL -eq 1 ] )
+then
+  # Shrink drill holes
+  SEEN_PERCENT=0  
+  UNITS=METRIC
+  rm -f NewHoles.gbr
+  for line in $(cat Holes.gbr)
+  do
+    # The first percent is the end of what we need to change
+    
+    if echo $line | grep "^%" >/dev/null
+    then
+      SEEN_PERCENT=1        
+    fi
+    
+    if echo $line | grep "^INCH" >/dev/null
+    then
+      UNITS=INCH
+    fi    
+    
+    if ! [ $SEEN_PERCENT -eq 1 ]
+    then
+      if ( echo "$line" | grep -Po "^T.*C(.*)$" >/dev/null )
+      then      
+        DRILL="$(echo $line | sed "s/^.*C//" | sed "s/\r//" )"    
+        # echo "LINE $line"
+        # echo "DRILL $DRILL"   
+        
+        if [ $UNITS = "METRIC" ]
+        then
+        
+          NEWDRILL=$(calc "max($SHRINK_MIN_METRIC, ($DRILL * ((100 - $SHRINK_PERCENT) / 100)))")          
+        else
+      
+          NEWDRILL=$(calc "max($SHRINK_MIN_METRIC * 0.0393701, ($DRILL * ((100 - $SHRINK_PERCENT) / 100)))")
+        fi
+        echo "Resized $DRILL hole to $NEWDRILL"
+        line="$(echo $line | sed -r "s/(.*C).*(\r?)/\1$NEWDRILL\2/")"
+      fi      
+    fi
+    
+    echo "$line" >>NewHoles.gbr    
+  done
+  cp NewHoles.gbr Holes.gbr
+fi
+
+# Convert the gerbers into pngs with some known file names
+if ( [ -f Bottom.gbr ] || [ -f BottomMask.gbr ] || [ -f BottomSilk.gbr ] || [ -f Top.gbr ] || [ -f TopMask.gbr ] || [ -f TopSilk.gbr ] )
+then
+  echo "Converting Gerbers To PNG"
+  if layer bottom
+  then
+    GBR_DRILL="$( [ -f Holes.gbr ] && echo --foreground="#FFFFFFFF" Holes.gbr)"
+    GBR_OUTLINE="$( [ -f BoardOutline.gbr ] && echo --foreground="#000000FF" BoardOutline.gbr)"   
+    layer copper \
+      && [ -f Bottom.gbr ] \
+      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=copper_bottom.png    --export=png $GBR_DRILL  --foreground="#000000FF" Bottom.gbr $GBR_OUTLINE \
+      && CLEANUP="$CLEANUP copper_bottom.png"
+      
+    layer mask \
+      && [ -f BottomMask.gbr ] \
+      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=etch_mask_bottom.png --export=png $GBR_DRILL  --foreground="#000000FF" BottomMask.gbr $GBR_OUTLINE \
+      && CLEANUP="$CLEANUP etch_mask_bottom.png"
+      
+    layer silk \
+      && [ -f BottomSilk.gbr ] \
+      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=silk_bottom.png      --export=png $GBR_DRILL  --foreground="#000000FF" BottomSilk.gbr $GBR_OUTLINE   \
+      && CLEANUP="$CLEANUP silk_bottom.png"
+  fi
+
+  if layer top
+  then
+    GBR_OUTLINE="$( [ -f BoardOutline.gbr ] && echo --foreground="#000000FF" BoardOutline.gbr)"
+    GBR_DRILL="$( [ -f Holes.gbr ] && echo --foreground="#FFFFFFFF" Holes.gbr)"
+    layer copper \
+      && [ -f Top.gbr ] \
+      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=copper_top.png    --export=png $GBR_DRILL --foreground="#000000FF"  Top.gbr $GBR_OUTLINE \
+      && convert -density $RESOLUTION copper_top.png -flop copper_top_mirror.png  \
+      && CLEANUP="$CLEANUP copper_top_mirror.png copper_top.png"
+      
+    layer mask \
+      && [ -f TopMask.gbr ] \
+      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=etch_mask_top.png --export=png $GBR_DRILL --foreground="#000000FF"  TopMask.gbr $GBR_OUTLINE \
+      && convert -density $RESOLUTION etch_mask_top.png -flop etch_mask_top_mirror.png  \
+      && CLEANUP="$CLEANUP etch_mask_top_mirror.png etch_mask_top.png"
+      
+    layer silk \
+      && [ -f TopSilk.gbr ] \
+      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=silk_top.png      --export=png $GBR_DRILL --foreground="#000000FF"  TopSilk.gbr $GBR_OUTLINE \
+      && convert -density $RESOLUTION silk_top.png -flop silk_top_mirror.png    \
+      && CLEANUP="$CLEANUP silk_top_mirror.png silk_top.png"
+  fi  
+fi
+
+
+
+function need_invert
+{
+  for word in $NEGATIVE
+  do
+    if (echo $1 | grep -F $word - >/dev/null)
+    then
+      return 0
+    fi
+  done
+  
+  return 1
+}
+
+function out
+{
+        echo "out/$(basename $1).png"
+}
+
+# Convert MM to Pixels at $RESOLUTION  dpi
+function mm_px
+{
+  # 25.4 mm per inch
+  calc "( 1 / 25.4 * $RESOLUTION ) * ( $1 )" 
 }
 
 # Add registration
@@ -464,4 +529,4 @@ else
 fi
 
 echo "Done"
-[ -n "$CLEANUP" ] && rm $CLEANUP
+[ -n "$CLEANUP" ] && rm -f $CLEANUP
