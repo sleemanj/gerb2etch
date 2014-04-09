@@ -87,6 +87,10 @@ Options
     -p Padding in mm from edge of artworks to edge of alignment frames, always transparent, eg "-p 1"
     -b Frame border width in mm, eg "-b 0.25"
     -s Separation distance between artwork frames in mm, eg "-s 30.4"
+    
+    -d Shrink drill holes by a configured % (default 60%). but no smaller than a configured mm (0.3mm default)
+      Note that the pads do not shrink, just the etched holes, useful for better centering of drills
+      especially in larger holes.
 
     -x Do not pre-trim the artwork, this means that the border added by gerbv will be kept in the artwork.
    
