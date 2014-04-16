@@ -6,15 +6,18 @@ B_BLACK=0.25              # alignment frame border width (mm)
 B_SEPAR=30.4              # separation width between frames (mm)
 ROTATE=0                  # rotate the images first
 SHRINK_DRILL=0            # shrnk drills
-SHRINK_MIN_METRIC=0.3     # shrink drill minimum size in mm
-SHRINK_PERCENT=60         # shrink drill by percent
+SHRINK_MIN_METRIC=0.4     # shrink drill minimum size in mm
+SHRINK_PERCENT=50         # shrink drill by percent
+UNBURY_HOLES=1            # add a mask for all holes, even buried vias
+UNBURY_DIAM_METRIC=1.25   # minimum diameter of the mask in mm for ALL holes when UNBURY_HOLES == 1
+SHOW_HOLES_IN_MASK=0      # show the center holes of pads in the soldermask artwork
 NEGATIVE="copper"         # these will be inverted to produce artwork for negative acting resist
                           # for dry film, set copper negative, for toner transfer and positive resist nothing negative
                           # you can also put silk and mask in negative if useful to you
 WHAT=""                   # copper mask silk top bottom; blank for all turned on
 EOC=$((LINENO-1))
 
-while getopts ":r:s:p:b:zxn:tuhd" OPT
+while getopts ":r:s:p:b:zxXn:tuhdVD" OPT
 do
   case $OPT in
     h)
@@ -43,7 +46,17 @@ Options
       Note that the pads do not shrink, just the etched holes, useful for better centering of drills
       especially in larger holes.
    
-   -x Do not pre-trim the artwork, this means that the border added by gerbv will be kept in the artwork.
+   -V Do not unbury vias.  By default all drill holes will be masked with a minimum circular mask of $UNBURY_DIAM_METRIC mm
+      This will have the effect of masking ALL holes even if the solder mask gerber doesn't include them (buried vias).
+      A side effect is that all through hole pad masks will be a minimum diameter of $UNBURY_DIAM_METRIC mm
+      For home-etched boards you probably want all vias exposed so you can solder wire/rivets through them after your
+      soldermask is applied.  If you are electroplating however you might want to turn this off and so bury the plated
+      vias under soldermask as a professional board house would do (assuming you have specified buried vias of course).
+   
+   -D Include holes in the solder mask pads, by default the masks do not have holes so that slight mis-alignment is less 
+      of a problem.
+   
+   -X Do not pre-trim the artwork, this means that the border added by gerbv will be kept in the artwork.
    
 Layers   
 -------
@@ -93,8 +106,16 @@ exit
       PRE_TRIM=0
     ;;
     
+    X)
+      PRE_TRIM=0
+    ;;
+    
     d)
       SHRINK_DRILL=1  
+    ;;
+    
+    D)
+      SHOW_HOLES_IN_MASK=1
     ;;
     
     p) 
@@ -131,6 +152,10 @@ exit
         echo "Invalid Resolution: $OPTARG" >&2
         exit
       fi
+    ;;
+    
+    V)
+      UNBURY_HOLES=0
     ;;
     
     \?)
@@ -178,6 +203,16 @@ if [ $SHRINK_DRILL -eq 1 ]
 then
   echo "Shrink Drills By: $SHRINK_PERCENT%"
   echo "Minimum Drill Size: $SHRINK_MIN_METRIC mm"  
+fi
+if [ $UNBURY_HOLES -eq 1 ]
+then
+  echo "Mask all through holes minimum: $UNBURY_DIAM_METRIC mm"  
+fi
+if [ $SHOW_HOLES_IN_MASK -eq 1 ]
+then
+  echo "Show drill holes in mask: On"
+else
+  echo "Show drill holes in mask: Off"
 fi
 echo "------------------------------------------------------"
 echo 
@@ -304,6 +339,49 @@ function floor
   echo "scale = 0\n($1)/1" | bc -l
 }
 
+if ( [ -f Holes.gbr ] && [ $UNBURY_HOLES -eq 1 ] )
+then
+  # Expand drill holes
+  SEEN_PERCENT=0  
+  UNITS=METRIC
+  rm -f UnburyHoles.gbr
+  for line in $(cat Holes.gbr)
+  do
+    # The first percent is the end of what we need to change
+    
+    if echo $line | grep "^%" >/dev/null
+    then
+      SEEN_PERCENT=1        
+    fi
+    
+    if echo $line | grep "^INCH" >/dev/null
+    then
+      UNITS=INCH
+    fi    
+    
+    if ! [ $SEEN_PERCENT -eq 1 ]
+    then
+      if ( echo "$line" | grep -Po "^T.*C(.*)$" >/dev/null )
+      then      
+        DRILL="$(echo $line | sed "s/^.*C//" | sed "s/\r//" )"    
+        # echo "LINE $line"
+        # echo "DRILL $DRILL"   
+        
+        if [ $UNITS = "METRIC" ]
+        then        
+          NEWDRILL=$(calc "max($UNBURY_DIAM_METRIC, $DRILL)")          
+        else      
+          NEWDRILL=$(calc "max($UNBURY_DIAM_METRIC * 0.0393701, $DRILL)")
+        fi
+        
+        line="$(echo $line | sed -r "s/(.*C).*(\r?)/\1$NEWDRILL\2/")"
+      fi      
+    fi
+    
+    echo "$line" >>UnburyHoles.gbr    
+  done
+  CLEANUP="$CLEANUP UnburyHoles.gbr"
+fi
 
 if ( [ -f Holes.gbr ] && [ $SHRINK_DRILL -eq 1 ] )
 then
@@ -359,6 +437,8 @@ then
   then
     GBR_DRILL="$( [ -f Holes.gbr ] && echo --foreground="#FFFFFFFF" Holes.gbr)"
     GBR_OUTLINE="$( [ -f BoardOutline.gbr ] && echo --foreground="#000000FF" BoardOutline.gbr)"   
+    EXTRA_MASK="$( [ $SHOW_HOLES_IN_MASK = 1 ] && echo $GBR_DRILL ) $( [ -f UnburyHoles.gbr ] && echo --foreground="#000000FF" UnburyHoles.gbr)"
+    
     layer copper \
       && [ -f Bottom.gbr ] \
       && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=copper_bottom.png    --export=png $GBR_DRILL  --foreground="#000000FF" Bottom.gbr $GBR_OUTLINE \
@@ -366,7 +446,7 @@ then
       
     layer mask \
       && [ -f BottomMask.gbr ] \
-      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=etch_mask_bottom.png --export=png $GBR_DRILL  --foreground="#000000FF" BottomMask.gbr $GBR_OUTLINE \
+      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=etch_mask_bottom.png --export=png $EXTRA_MASK  --foreground="#000000FF" BottomMask.gbr $GBR_OUTLINE \
       && CLEANUP="$CLEANUP etch_mask_bottom.png"
       
     layer silk \
@@ -379,6 +459,8 @@ then
   then
     GBR_OUTLINE="$( [ -f BoardOutline.gbr ] && echo --foreground="#000000FF" BoardOutline.gbr)"
     GBR_DRILL="$( [ -f Holes.gbr ] && echo --foreground="#FFFFFFFF" Holes.gbr)"
+    EXTRA_MASK="$( [ $SHOW_HOLES_IN_MASK = 1 ] && echo $GBR_DRILL ) $( [ -f UnburyHoles.gbr ] && echo --foreground="#000000FF" UnburyHoles.gbr)"
+    
     layer copper \
       && [ -f Top.gbr ] \
       && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=copper_top.png    --export=png $GBR_DRILL --foreground="#000000FF"  Top.gbr $GBR_OUTLINE \
@@ -387,7 +469,7 @@ then
       
     layer mask \
       && [ -f TopMask.gbr ] \
-      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=etch_mask_top.png --export=png $GBR_DRILL --foreground="#000000FF"  TopMask.gbr $GBR_OUTLINE \
+      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=etch_mask_top.png --export=png $EXTRA_MASK --foreground="#000000FF"  TopMask.gbr  $GBR_OUTLINE \
       && convert -density $RESOLUTION etch_mask_top.png -flop etch_mask_top_mirror.png  \
       && CLEANUP="$CLEANUP etch_mask_top_mirror.png etch_mask_top.png"
       
