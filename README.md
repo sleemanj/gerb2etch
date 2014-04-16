@@ -9,7 +9,7 @@ Low resolution example of generated artwork
 -------------------------------------------
 Show below is what is generated in the PDF for a copper and mask, silk is also available.  This is a low resolution screenshot, you can set arbitrary resolution (I wouldn't go higher than 1200 dpi unless you have a fast computer and time to spare).  This eample has a negative copper and positive mask, you can specifiy the negativity of any layer.
 
-![Alt text](/example-output.jpg "Exmple")
+![Alt text](/example-output.jpg "Example")
 
 Requirements
 ------------
@@ -18,12 +18,12 @@ Requirements
 *  imagemagick
 *  grep
 *  bc
-*  for drill shrinking, sed is required also
+*  for drill shrinking and via unburying, sed is required also
 
 
 For debian/ubuntu etc..
 
-     sudo apt-get install bash gerbv imagemagick grep bc
+     sudo apt-get install bash gerbv imagemagick grep bc sed
 
 should about cover it.
 
@@ -89,11 +89,22 @@ Options
     -b Frame border width in mm, eg "-b 0.25"
     -s Separation distance between artwork frames in mm, eg "-s 30.4"
     
-    -d Shrink drill holes by a configured % (default 60%). but no smaller than a configured mm (0.3mm default)
+    -d Shrink drill holes by a configured % (default 50%). but no smaller than a configured mm (0.4mm default)
       Note that the pads do not shrink, just the etched holes, useful for better centering of drills
       especially in larger holes.
-
-    -x Do not pre-trim the artwork, this means that the border added by gerbv will be kept in the artwork.
+      
+    -V Do not unbury vias.  By default all drill holes will be masked with a minimum circular mask of 1.3 mm.
+       This will have the effect of masking ALL holes even if the solder mask gerber doesn't include them 
+       (buried vias).  A side effect is that all through hole pad masks will be a minimum diameter of 1.3 mm.  
+       For home-etched boards you probably want the default of all vias exposed so you can solder wire/rivets
+       through them after your soldermask is applied. If you are electroplating however you might want to turn 
+       this off and so bury the plated vias under soldermask as a professional board house would do (assuming 
+       you have specified buried vias of course).
+   
+    -D Include holes in the solder mask pads, by default the masks do not have holes so that slight mis-alignment
+      is less of a problem.
+      
+    -X Do not pre-trim the artwork, this means that the border added by gerbv will be kept in the artwork.
    
 Layers   
 -------
