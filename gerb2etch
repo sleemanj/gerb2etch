@@ -7,7 +7,8 @@ B_SEPAR=30.4              # separation width between frames (mm)
 ROTATE=0                  # rotate the images first
 SHRINK_DRILL=0            # shrnk drills
 SHRINK_MIN_METRIC=0.4     # shrink drill minimum size in mm
-SHRINK_PERCENT=50         # shrink drill by percent
+SHRINK_PERCENT=35         # shrink drill by percent
+REMOVE_TINY_HOLES=0       # completely remove holes that are already smaller than SHRINK_MIN_METRIC
 UNBURY_HOLES=1            # add a mask for all holes, even buried vias
 UNBURY_DIAM_METRIC=1.3    # minimum diameter of the mask in mm for ALL holes when UNBURY_HOLES == 1
 SHOW_HOLES_IN_MASK=0      # show the center holes of pads in the soldermask artwork
@@ -45,6 +46,11 @@ Options
    -d Shrink drill holes by $SHRINK_PERCENT% (but no smaller than $SHRINK_MIN_METRIC mm)
       Note that the pads do not shrink, just the etched holes, useful for better centering of drills
       especially in larger holes.
+   
+   -dd As for -d, but also completely remove any holes that are *already* smaller than $SHRINK_MIN_METRIC mm
+       This is useful when you have small vias inside pads of 0 ohm SMD resistors so that you can use either
+       a top-trace between vias when professionally manufactured, or a 0 ohm "resistor" on the bottom
+       when you are etching your own and thus don't need to drill the small vias.       
    
    -V Do not unbury vias.  By default all drill holes will be masked with a minimum circular mask of $UNBURY_DIAM_METRIC mm
       This will have the effect of masking ALL holes even if the solder mask gerber doesn't include them (buried vias).
@@ -111,7 +117,12 @@ exit
     ;;
     
     d)
-      SHRINK_DRILL=1  
+      if [ $SHRINK_DRILL -eq 1 ]
+      then
+        REMOVE_TINY_HOLES=1
+      else      
+        SHRINK_DRILL=1  
+      fi
     ;;
     
     D)
@@ -203,6 +214,12 @@ if [ $SHRINK_DRILL -eq 1 ]
 then
   echo "Shrink Drills By: $SHRINK_PERCENT%"
   echo "Minimum Drill Size: $SHRINK_MIN_METRIC mm"  
+  if [ $REMOVE_TINY_HOLES -eq 1 ]
+  then
+    echo "Remove Tiny Drill Holes: On"
+  else
+    echo "Remove Tiny Drill Holes: Off"
+  fi
 fi
 if [ $UNBURY_HOLES -eq 1 ]
 then
@@ -267,6 +284,11 @@ define min(x,y) {
 define max(x,y) {
     if (x>y) return x
     return y
+}
+
+define zeroifless(x,y) {
+    if (x<y) return 0
+    return x
 }
 
 define abs(x) {
@@ -339,50 +361,6 @@ function floor
   echo "scale = 0\n($1)/1" | bc -l
 }
 
-if ( [ -f Holes.gbr ] && [ $UNBURY_HOLES -eq 1 ] )
-then
-  # Expand drill holes
-  SEEN_PERCENT=0  
-  UNITS=METRIC
-  rm -f UnburyHoles.gbr
-  for line in $(cat Holes.gbr)
-  do
-    # The first percent is the end of what we need to change
-    
-    if echo $line | grep "^%" >/dev/null
-    then
-      SEEN_PERCENT=1        
-    fi
-    
-    if echo $line | grep "^INCH" >/dev/null
-    then
-      UNITS=INCH
-    fi    
-    
-    if ! [ $SEEN_PERCENT -eq 1 ]
-    then
-      if ( echo "$line" | grep -Po "^T.*C(.*)$" >/dev/null )
-      then      
-        DRILL="$(echo $line | sed "s/^.*C//" | sed "s/\r//" )"    
-        # echo "LINE $line"
-        # echo "DRILL $DRILL"   
-        
-        if [ $UNITS = "METRIC" ]
-        then        
-          NEWDRILL=$(calc "max($UNBURY_DIAM_METRIC, $DRILL)")          
-        else      
-          NEWDRILL=$(calc "max($UNBURY_DIAM_METRIC * 0.0393701, $DRILL)")
-        fi
-        
-        line="$(echo $line | sed -r "s/(.*C).*(\r?)/\1$NEWDRILL\2/")"
-      fi      
-    fi
-    
-    echo "$line" >>UnburyHoles.gbr    
-  done
-  CLEANUP="$CLEANUP UnburyHoles.gbr"
-fi
-
 if ( [ -f Holes.gbr ] && [ $SHRINK_DRILL -eq 1 ] )
 then
   # Shrink drill holes
@@ -414,11 +392,25 @@ then
         if [ $UNITS = "METRIC" ]
         then
         
-          NEWDRILL=$(calc "max($SHRINK_MIN_METRIC, ($DRILL * ((100 - $SHRINK_PERCENT) / 100)))")          
+          NEWDRILL=$(calc "max(min($DRILL,$SHRINK_MIN_METRIC), ($DRILL * ((100 - $SHRINK_PERCENT) / 100)))")
+          
+          # gerbv doesn't like 0 size holes, so make it just very very tiny (0.0254 mm)
+          if [ $REMOVE_TINY_HOLES -eq 1 ]
+          then
+            NEWDRILL=$(calc "max(0.0254, zeroifless($NEWDRILL, $SHRINK_MIN_METRIC * 0.99))");            
+          fi
         else
       
-          NEWDRILL=$(calc "max($SHRINK_MIN_METRIC * 0.0393701, ($DRILL * ((100 - $SHRINK_PERCENT) / 100)))")
+          NEWDRILL=$(calc "max(min($DRILL,$SHRINK_MIN_METRIC * 0.0393701 * 0.99), ($DRILL * ((100 - $SHRINK_PERCENT) / 100)))")
+          
+          # gerbv doesn't like 0 size holes, so make it just very very tiny (1 mil)
+          if [ $REMOVE_TINY_HOLES -eq 1 ]
+          then
+            NEWDRILL=$(calc "max(0.001, zeroifless($NEWDRILL, $SHRINK_MIN_METRIC * 0.0393701))");            
+          fi
         fi
+        
+        
         echo "Resized $DRILL hole to $NEWDRILL"
         line="$(echo $line | sed -r "s/(.*C).*(\r?)/\1$NEWDRILL\2/")"
       fi      
@@ -427,6 +419,60 @@ then
     echo "$line" >>NewHoles.gbr    
   done
   cp NewHoles.gbr Holes.gbr
+fi
+
+if ( [ -f Holes.gbr ] && [ $UNBURY_HOLES -eq 1 ] )
+then
+  # Expand drill holes
+  SEEN_PERCENT=0  
+  UNITS=METRIC
+  rm -f UnburyHoles.gbr
+  for line in $(cat Holes.gbr)
+  do
+    # The first percent is the end of what we need to change
+    
+    if echo $line | grep "^%" >/dev/null
+    then
+      SEEN_PERCENT=1        
+    fi
+    
+    if echo $line | grep "^INCH" >/dev/null
+    then
+      UNITS=INCH
+    fi    
+    
+    if ! [ $SEEN_PERCENT -eq 1 ]
+    then
+      if ( echo "$line" | grep -Po "^T.*C(.*)$" >/dev/null )
+      then      
+        DRILL="$(echo $line | sed "s/^.*C//" | sed "s/\r//" )"    
+        # echo "LINE $line"
+        # echo "DRILL $DRILL"   
+        
+        if [ $UNITS = "METRIC" ]
+        then        
+          if [ $REMOVE_TINY_HOLES -eq 1 ] && [ $(calc "$DRILL <= 0.0254" ) -eq 1 ]
+          then
+            NEWDRILL="$DRILL"
+          else          
+            NEWDRILL=$(calc "max($UNBURY_DIAM_METRIC, $DRILL)")          
+          fi
+        else      
+          if [ $REMOVE_TINY_HOLES -eq 1 ] && [ $(calc "$DRILL <= 0.001" ) -eq 1 ]
+          then
+            NEWDRILL="$DRILL"
+          else
+            NEWDRILL=$(calc "max($UNBURY_DIAM_METRIC * 0.0393701, $DRILL)")
+          fi
+        fi
+                
+        line="$(echo $line | sed -r "s/(.*C).*(\r?)/\1$NEWDRILL\2/")"
+      fi      
+    fi
+    
+    echo "$line" >>UnburyHoles.gbr    
+  done
+  CLEANUP="$CLEANUP UnburyHoles.gbr"
 fi
 
 # Convert the gerbers into pngs with some known file names
