@@ -16,6 +16,13 @@ NEGATIVE="copper"         # these will be inverted to produce artwork for negati
                           # for dry film, set copper negative, for toner transfer and positive resist nothing negative
                           # you can also put silk and mask in negative if useful to you
 WHAT=""                   # copper mask silk top bottom; blank for all turned on
+MAX_PAGE_X_MM=180         # the maximum "x" dimension (mm) that the PDF will be produced in
+MAX_PAGE_Y_MM=267         # the maximum "y" dimension (mm) that the PDF will be produced in
+                          #  ** Note - if the values you put here are larger (or nearly larger) than your actual paper size, 
+                          #  your pdf viewer, or printer, may shrink the output to fit.  So make sure to set the value significantly
+                          #  less than the actual paper size (eg for A4, 180x267 will allow about 15mm on each edge)
+                          #  it should allow you to get two sides of a 10x10 PCB on the same sheet (landscape)       
+                          #  the pdf will be produced in whichever orientation fits best
 EOC=$((LINENO-1))
 
 while getopts ":r:s:p:b:zxXn:tuhdVD" OPT
@@ -606,6 +613,7 @@ mogrify -density $RESOLUTION \
       $(out $1) 2>/dev/null
 # echo "Done"
    WIDTH=$(calc "floor(($(identify -format %w -density $RESOLUTION  $(out $1)) / $RESOLUTION ) * 25.4)" )
+   HEIGHT=$(calc "floor(($(identify -format %h -density $RESOLUTION  $(out $1)) / $RESOLUTION ) * 25.4)" )
 }
 
 echo "Creating Artworks"
@@ -626,7 +634,9 @@ SILK_BOTTOM=$(ls | grep silk_bottom\\. | head -1)
 SILK_TOP=$(ls | grep silk_top_mirror\\. | head -1)
 
 # This will be set by alignments, we use it later to decide if to use 2 columns in the pdf
+# it is measured in mm at the target resolution
 WIDTH= 
+HEIGHT=
 
 if layer copper
 then
@@ -647,14 +657,67 @@ then
 fi
 
 echo "Creating PDF"
-if [ $WIDTH -lt 96 ] 
+N_ACROSS=2
+N_DOWN=3
+
+# If two images do not fit across
+if [ $(calc "$WIDTH * 2") -gt $MAX_PAGE_X_MM ]
 then
-  # Put two across
-  montage -density $RESOLUTION -mode concatenate -tile 2x out/*.png artwork.pdf 2>/dev/null
-else
-  # Put one across
-  montage -density $RESOLUTION -mode concatenate -tile 1x out/*.png artwork.pdf 2>/dev/null
+  # If they would landscape wise, try that
+  if [  $(calc "$WIDTH * 2") -lt $MAX_PAGE_Y_MM ]
+  then
+    TMP=$MAX_PAGE_X_MM
+    MAX_PAGE_X_MM=$MAX_PAGE_Y_MM
+    MAX_PAGE_Y_MM=$TMP
+  else
+    # Otherwise, can only do 1 across
+    N_ACROSS=1
+  fi
 fi
+
+while [ $N_DOWN -gt 1 ] && [ $(calc "$N_DOWN * $HEIGHT") -gt $MAX_PAGE_Y_MM ]
+do
+  N_DOWN=$(calc "$N_DOWN - 1")
+done
+
+IMGS_PER_PAGE=$(calc "$N_DOWN * $N_ACROSS");
+THIS_PAGE=
+PAGENUM=1
+LASTPAGENUM=
+echo "Tiling $N_ACROSS x $N_DOWN per page."
+
+for file in out/*.png
+do
+  THIS_PAGE="$THIS_PAGE $file"
+  if [ $(echo $THIS_PAGE | wc -w) -eq $IMGS_PER_PAGE ]
+  then
+    echo "Creating page ${PAGENUM}..."
+    montage -density $RESOLUTION -mode concatenate -tile ${N_ACROSS}x $THIS_PAGE out/page-${PAGENUM}.pdf 2>/dev/null
+    THIS_PAGE=""
+    LASTPAGENUM=$PAGENUM
+    PAGENUM=$(calc "$PAGENUM + 1")    
+  fi
+done
+
+if [ -n "$THIS_PAGE" ]
+then
+  echo "Creating page ${PAGENUM}..."
+  montage -density $RESOLUTION -mode concatenate -tile ${N_ACROSS}x $THIS_PAGE out/page-${PAGENUM}.pdf 2>/dev/null
+  LASTPAGENUM=$PAGENUM  
+fi
+
+if [ $LASTPAGENUM -lt 2 ]
+then
+  mv out/page-1.pdf artwork.pdf
+elif which pdfjoin >/dev/null
+then
+  echo "Joining pages into artwork.pdf"
+  pdfjoin -q --outfile artwork.pdf out/page-*.pdf 
+else
+  mv out/page-*.pdf ./
+  echo "Notice: Multiple PDF documents created, see page-X.pdf ..."  
+fi
+
 
 echo "Done"
 [ -n "$CLEANUP" ] && rm -f $CLEANUP
