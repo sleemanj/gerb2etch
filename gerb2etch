@@ -408,7 +408,7 @@ then
           fi
         else
       
-          NEWDRILL=$(calc "max(min($DRILL,$SHRINK_MIN_METRIC * 0.0393701 * 0.99), ($DRILL * ((100 - $SHRINK_PERCENT) / 100)))")
+          NEWDRILL=$(calc "max(min($DRILL,$SHRINK_MIN_METRIC * 0.0393701), ($DRILL * ((100 - $SHRINK_PERCENT) / 100)))")
           
           # gerbv doesn't like 0 size holes, so make it just very very tiny (1 mil)
           if [ $REMOVE_TINY_HOLES -eq 1 ]
