@@ -23,9 +23,11 @@ MAX_PAGE_Y_MM=267         # the maximum "y" dimension (mm) that the PDF will be 
                           #  less than the actual paper size (eg for A4, 180x267 will allow about 15mm on each edge)
                           #  it should allow you to get two sides of a 10x10 PCB on the same sheet (landscape)       
                           #  the pdf will be produced in whichever orientation fits best
+SCALE_X=1              # If your printer needs some help with dimensional accuracy, you can set a scaling factor
+SCALE_Y=1              # If your printer needs some help with dimensional accuracy, you can set a scaling factor
 EOC=$((LINENO-1))
 
-while getopts ":r:s:p:b:zxXn:tuhdVD" OPT
+while getopts ":r:s:p:b:zx:y:Xn:tuhdVD" OPT
 do
   case $OPT in
     h)
@@ -70,6 +72,10 @@ Options
       of a problem.
    
    -X Do not pre-trim the artwork, this means that the border added by gerbv will be kept in the artwork.
+   
+   -x Scale the X dimension by a given factor, eg "-x 1.05" makes the X dimension 5% longer
+   
+   -y Scale the Y dimension by a given factor, eg "-y 0.95" makes the Y dimension 5% shorter
    
 Layers   
 -------
@@ -116,7 +122,21 @@ exit
     ;;
     
     x)
-      PRE_TRIM=0
+      SCALE_X=$OPTARG
+      if echo $SCALE_X | grep -q "[^0-9.]"
+      then
+        echo "Invalid scale for x axis: $OPTARG" >&2
+        exit
+      fi
+    ;;
+    
+    y)
+      SCALE_Y=$OPTARG
+      if echo $SCALE_Y | grep -q "[^0-9.]"
+      then
+        echo "Invalid scale for y axis: $OPTARG" >&2
+        exit
+      fi
     ;;
     
     X)
@@ -238,6 +258,8 @@ then
 else
   echo "Show drill holes in mask: Off"
 fi
+[ "$SCALE_X" != "1" ] && echo "Scale X by: $SCALE_X"
+[ "$SCALE_Y" != "1" ] && echo "Scale Y by: $SCALE_Y"
 echo "------------------------------------------------------"
 echo 
 
@@ -616,6 +638,15 @@ mogrify -density $RESOLUTION \
    HEIGHT=$(calc "floor(($(identify -format %h -density $RESOLUTION  $(out $1)) / $RESOLUTION ) * 25.4)" )
 }
 
+function scale_image
+{
+  
+  local WIDTH=$(calc "floor($(identify -format %w -density $RESOLUTION  $1) * $SCALE_X)" )
+  local HEIGHT=$(calc "floor($(identify -format %h -density $RESOLUTION  $1) * $SCALE_Y)" )
+  echo "Scaling image: $1 to ${WIDTH}x${HEIGHT} from $(identify -format %w -density $RESOLUTION  $1)x$(identify -format %h -density $RESOLUTION  $1)"
+  mogrify -resize ${WIDTH}x${HEIGHT}\! -density $RESOLUTION $1
+}
+
 echo "Creating Artworks"
 
 rm -rf out
@@ -669,6 +700,12 @@ then
     TMP=$MAX_PAGE_X_MM
     MAX_PAGE_X_MM=$MAX_PAGE_Y_MM
     MAX_PAGE_Y_MM=$TMP
+    
+    # Also swap the scaling around as it would be printed
+    # rotated by 90
+    TMP=$SCALE_X
+    SCALE_X=$SCALE_Y
+    SCALE_Y=$TMP
   else
     # Otherwise, can only do 1 across
     N_ACROSS=1
@@ -688,6 +725,7 @@ echo "Tiling $N_ACROSS x $N_DOWN per page."
 
 for file in out/*.png
 do
+  [ "$SCALE_X" != "1" -o "$SCALE_Y" != "1" ] && scale_image $file
   THIS_PAGE="$THIS_PAGE $file"
   if [ $(echo $THIS_PAGE | wc -w) -eq $IMGS_PER_PAGE ]
   then
