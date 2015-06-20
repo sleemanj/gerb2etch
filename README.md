@@ -65,6 +65,7 @@ Provided they will fit, the bottom and top images (for each of copper, mask and 
 
 A 1mm padding is put arund the PCB because usually home-etching needs a bit more lee-way especially at the edges, so cut your PCB 2mm wider and 2mm higher than your gerber specifies, you can set this padding amount with option -p
 
+Printers may (usually do) have a small scaling error when you print, to counteract this you can use the -x and/or -y options to apply a scaling to the artwork.  For example, if you print what should be a 25mm horizontal line but  your printer prints out a 24mm long one, then you could use -x 1.042 (24 times 1.042 = 25.008, close enough).
 
 Advanced Usage
 --------------
@@ -88,24 +89,32 @@ Options
     -p Padding in mm from edge of artworks to edge of alignment frames, always transparent, eg "-p 1"
     -b Frame border width in mm, eg "-b 0.25"
     -s Separation distance between artwork frames in mm, eg "-s 30.4"
-    
-    -d Shrink drill holes by a configured % (default 50%). but no smaller than a configured mm (0.4mm default)
+   
+    -d Shrink drill holes by $SHRINK_PERCENT% (but no smaller than $SHRINK_MIN_METRIC mm)
       Note that the pads do not shrink, just the etched holes, useful for better centering of drills
       especially in larger holes.
-      
-    -V Do not unbury vias.  By default all drill holes will be masked with a minimum circular mask of 1.3 mm.
-       This will have the effect of masking ALL holes even if the solder mask gerber doesn't include them 
-       (buried vias).  A side effect is that all through hole pad masks will be a minimum diameter of 1.3 mm.  
-       For home-etched boards you probably want the default of all vias exposed so you can solder wire/rivets
-       through them after your soldermask is applied. If you are electroplating however you might want to turn 
-       this off and so bury the plated vias under soldermask as a professional board house would do (assuming 
-       you have specified buried vias of course).
    
-    -D Include holes in the solder mask pads, by default the masks do not have holes so that slight mis-alignment
-      is less of a problem.
-      
+    -dd As for -d, but also completely remove any holes that are *already* smaller than $SHRINK_MIN_METRIC mm
+       This is useful when you have small vias inside pads of 0 ohm SMD resistors so that you can use either
+       a top-trace between vias when professionally manufactured, or a 0 ohm "resistor" on the bottom
+       when you are etching your own and thus don't need to drill the small vias.       
+   
+    -V Do not untent vias.  By default all drill holes will be masked with a minimum circular mask of $UNBURY_DIAM_METRIC mm
+      This will have the effect of masking ALL holes even if the solder mask gerber doesn't include them (tented vias).
+      A side effect is that all through hole pad masks will be a minimum diameter of $UNBURY_DIAM_METRIC mm
+      For home-etched boards you probably want all vias exposed so you can solder wire/rivets through them after your
+      soldermask is applied.  If you are electroplating however you might want to turn this off and so tent the plated
+      vias under soldermask as a professional board house would do (assuming you have specified tent vias of course).
+   
+    -D Include holes in the solder mask pads, by default the masks do not have holes so that slight mis-alignment is less 
+      of a problem.
+   
     -X Do not pre-trim the artwork, this means that the border added by gerbv will be kept in the artwork.
    
+    -x Scale the X dimension by a given factor, eg "-x 1.05" makes the X dimension 5% longer
+   
+    -y Scale the Y dimension by a given factor, eg "-y 0.95" makes the Y dimension 5% shorter
+    
 Layers   
 -------
    Available layers are copper mask silk top bottom
