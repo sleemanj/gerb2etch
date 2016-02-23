@@ -52,6 +52,19 @@ Quick start
 *  run gerb2etch
 *  open the generated "artwork.pdf" file in your PDF viewer of choice
 *  See gerb2etch -h
+
+The script will look for the gerber layers using the below file names...
+
+|Layer|Name Your Files|
+|---|---|
+|Copper Top | *.gtl ; or Top.gbr|
+|Silk Top  | *.gto ; or TopSilk.gbr|
+|Mask Top |*.gts ; or TopMask.gbr|
+|Copper Bottom | *.gbl ; or Bottom.gbr|
+|Silk Bottom | *.gbo ; or BottomSilk.gbr|
+|Mask Bottom | *.gbs ; or BottomMask.gbr|
+|Board Outline |*.gm1 ; or *.oln ; or Edges.gbr ; or BoardOutline.gbr|
+|Drill | *.drl ; or drill.txt ; or Holes.gbr|
   
   
 Tips
