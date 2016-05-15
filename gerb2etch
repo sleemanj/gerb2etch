@@ -271,6 +271,7 @@ CLEANUP=
 ( ls | grep -i \\.gm1  >/dev/null ) && cp "$(ls | grep -i \\.gm1 | head -1)" BoardOutline.gbr   && CLEANUP="$CLEANUP BoardOutline.gbr"
 ( ls | grep -i \\.oln  >/dev/null ) && cp "$(ls | grep -i \\.oln | head -1)" BoardOutline.gbr   && CLEANUP="$CLEANUP BoardOutline.gbr"
 ( ls | grep -i Edges\\.gbr  >/dev/null ) && cp "$(ls | grep -i Edges\\.gbr | head -1)" BoardOutline.gbr   && CLEANUP="$CLEANUP BoardOutline.gbr"
+( ls | grep -i \\.gko  >/dev/null ) && cp "$(ls | grep -i \\.gko | head -1)" BoardOutline.gbr   && CLEANUP="$CLEANUP BoardOutline.gbr"
 ( ls | grep -i  drill\\.txt >/dev/null) && cp "$(ls | grep -i drill\\.txt | head -1)" Holes.gbr && CLEANUP="$CLEANUP Holes.gbr"
 ( ls | grep -i  \\.drl >/dev/null) && cp "$(ls | grep -i \\.drl | head -1)" Holes.gbr && CLEANUP="$CLEANUP Holes.gbr"
 
@@ -304,6 +305,16 @@ function calc
 #    extra functions available.
 # Changes:
 #    V0.1, 11 Apr 2007, Initial release
+
+define twodp(x)
+{
+  oldscale = scale
+  scale = 2
+  x = x * 100
+  y = x / 100
+  scale = oldscale
+  return y
+}
 
 define min(x,y) {
     if (x<y) return x
@@ -428,6 +439,7 @@ then
           then
             NEWDRILL=$(calc "max(0.0254, zeroifless($NEWDRILL, $SHRINK_MIN_METRIC * 0.99))");            
           fi
+          echo "Resized $DRILL hole to $NEWDRILL"
         else
       
           NEWDRILL=$(calc "max(min($DRILL,$SHRINK_MIN_METRIC * 0.0393701), ($DRILL * ((100 - $SHRINK_PERCENT) / 100)))")
@@ -437,10 +449,11 @@ then
           then
             NEWDRILL=$(calc "max(0.001, zeroifless($NEWDRILL, $SHRINK_MIN_METRIC * 0.0393701))");            
           fi
+          echo "Resized $(calc "twodp( round($DRILL * 25.4 * 100)/100 )")mm (${DRILL}\") hole to $(calc "twodp( round($NEWDRILL * 25.4 * 100)/100 )")mm ($(calc "twodp( round(${NEWDRILL}*100)/100)")\")"
         fi
         
         
-        echo "Resized $DRILL hole to $NEWDRILL"
+        
         line="$(echo $line | sed -r "s/(.*C).*(\r?)/\1$NEWDRILL\2/")"
       fi      
     fi
