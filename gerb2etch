@@ -38,7 +38,7 @@ Options
 -------
    -r Resolution in dpi, eg "-r 1200"   
    -u Short hand for negative acting UV exposure (eg dry-film), negates copper, sets layer output to copper and mask
-   -t Short hand for toner transfer, negates mask (but doesn't output by default), sets layer output to copper only
+   -t Short hand for toner transfer, negates mask and paste (stencil) (but doesn't output by default), sets layer output to copper only
    -z Rotate artwork (portrait becomes landscape, landscape becomes portrait)
    
    -n Specifically set the layers to negate, eg -n "copper mask" makes copper and mask negative
@@ -47,6 +47,7 @@ Options
          copper: traces will be transparent
          mask:   pads will be transparent
          silk:   text will be transparent
+         paste (stencil):  pads will be transparent
    
    -p Padding in mm from edge of artworks to edge of alignment frames, always transparent, eg "-p 1"
    -b Frame border width in mm, eg "-b 0.25"
@@ -79,7 +80,7 @@ Options
    
 Layers   
 -------
-   Available layers are copper mask silk top bottom
+   Available layers are copper mask silk paste top bottom
    
    Eg, to get just the copper artworks
    : $0 [options] copper
@@ -92,6 +93,10 @@ Layers
    
    For just the copper and silk on the top
    :  $0 [options] copper silk top
+   
+   For just the top paste (stencil)
+   : $0 [options] top paste
+   
    
 Defaults
 --------
@@ -109,7 +114,7 @@ exit
     ;;
     
     t)
-      NEGATIVE="mask" 
+      NEGATIVE="mask paste" 
       WHAT="copper"
     ;;
     
@@ -280,13 +285,15 @@ then
   layer copper && ( ls | grep -i \\.gtl  >/dev/null ) && cp "$(ls | grep -i \\.gtl | head -1)" Top.gbr      && CLEANUP="$CLEANUP Top.gbr"
   layer silk   && ( ls | grep -i \\.gto  >/dev/null ) && cp "$(ls | grep -i \\.gto | head -1)" TopSilk.gbr  && CLEANUP="$CLEANUP TopSilk.gbr"
   layer mask   && ( ls | grep -i \\.gts  >/dev/null ) && cp "$(ls | grep -i \\.gts | head -1)" TopMask.gbr  && CLEANUP="$CLEANUP TopMask.gbr"
+  layer paste  && ( ls | grep -i \\.gtp  >/dev/null ) && cp "$(ls | grep -i \\.gtp | head -1)" TopPaste.gbr  && CLEANUP="$CLEANUP TopPaste.gbr"
 fi
 
 if layer bottom
 then
   layer copper && ( ls | grep -i \\.gbl >/dev/null  ) && cp "$(ls | grep -i \\.gbl | head -1)" Bottom.gbr    && CLEANUP="$CLEANUP Bottom.gbr"
-  layer silk && ( ls | grep -i \\.gbo >/dev/null  ) && cp "$(ls | grep -i \\.gbo | head -1)" BottomSilk.gbr  && CLEANUP="$CLEANUP BottomSilk.gbr"
-  layer mask && ( ls | grep -i \\.gbs >/dev/null  ) && cp "$(ls | grep -i \\.gbs | head -1)" BottomMask.gbr  && CLEANUP="$CLEANUP BottomMask.gbr"
+  layer silk   && ( ls | grep -i \\.gbo >/dev/null  ) && cp "$(ls | grep -i \\.gbo | head -1)" BottomSilk.gbr  && CLEANUP="$CLEANUP BottomSilk.gbr"
+  layer mask   && ( ls | grep -i \\.gbs >/dev/null  ) && cp "$(ls | grep -i \\.gbs | head -1)" BottomMask.gbr  && CLEANUP="$CLEANUP BottomMask.gbr"
+  layer paste  && ( ls | grep -i \\.gbp  >/dev/null ) && cp "$(ls | grep -i \\.gbp | head -1)" BottomPaste.gbr  && CLEANUP="$CLEANUP BottomPaste.gbr"
 fi
 
 
@@ -518,7 +525,7 @@ then
 fi
 
 # Convert the gerbers into pngs with some known file names
-if ( [ -f Bottom.gbr ] || [ -f BottomMask.gbr ] || [ -f BottomSilk.gbr ] || [ -f Top.gbr ] || [ -f TopMask.gbr ] || [ -f TopSilk.gbr ] )
+if ( [ -f Bottom.gbr ] || [ -f BottomMask.gbr ] || [ -f BottomSilk.gbr ] || [ -f BottomPaste.gbr ] || [ -f Top.gbr ] || [ -f TopMask.gbr ] || [ -f TopSilk.gbr ]  || [ -f TopPaste.gbr ])
 then
   echo "Converting Gerbers To PNG"
   if layer bottom
@@ -541,6 +548,11 @@ then
       && [ -f BottomSilk.gbr ] \
       && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=silk_bottom.png      --export=png $GBR_DRILL  --foreground="#000000FF" BottomSilk.gbr $GBR_OUTLINE   \
       && CLEANUP="$CLEANUP silk_bottom.png"
+      
+    layer paste \
+      && [ -f BottomPaste.gbr ] \
+      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=paste_bottom.png --export=png $EXTRA_MASK  --foreground="#000000FF" BottomPaste.gbr $GBR_OUTLINE \
+      && CLEANUP="$CLEANUP paste_bottom.png"
   fi
 
   if layer top
@@ -566,6 +578,13 @@ then
       && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=silk_top.png      --export=png $GBR_DRILL --foreground="#000000FF"  TopSilk.gbr $GBR_OUTLINE \
       && convert -density $RESOLUTION silk_top.png -flop silk_top_mirror.png    \
       && CLEANUP="$CLEANUP silk_top_mirror.png silk_top.png"
+      
+    layer paste \
+      && [ -f TopPaste.gbr ] \
+      && gerbv -a --border=10 --background="#FFFFFF" --dpi=$RESOLUTION --output=paste_top.png --export=png $EXTRA_MASK --foreground="#000000FF"  TopPaste.gbr  $GBR_OUTLINE \
+      && convert -density $RESOLUTION paste_top.png -flop paste_top_mirror.png  \
+      && CLEANUP="$CLEANUP paste_top_mirror.png paste_top.png"
+      
   fi  
 fi
 
@@ -677,6 +696,9 @@ MASK_TOP=$(ls | grep etch_mask_top_mirror\\. | head -1)
 SILK_BOTTOM=$(ls | grep silk_bottom\\. | head -1)
 SILK_TOP=$(ls | grep silk_top_mirror\\. | head -1)
 
+PASTE_BOTTOM=$(ls | grep paste_bottom\\. | head -1)
+PASTE_TOP=$(ls | grep paste_top_mirror\\. | head -1)
+
 # This will be set by alignments, we use it later to decide if to use 2 columns in the pdf
 # it is measured in mm at the target resolution
 WIDTH= 
@@ -698,6 +720,12 @@ if layer silk
 then
   layer bottom && [ -n "$SILK_BOTTOM" ]   && alignments $SILK_BOTTOM
   layer top    && [ -n "$SILK_TOP" ]      && alignments $SILK_TOP      
+fi
+
+if layer paste
+then
+  layer bottom && [ -n "$PASTE_BOTTOM" ]   && alignments $PASTE_BOTTOM
+  layer top    && [ -n "$PASTE_TOP" ]      && alignments $PASTE_TOP      
 fi
 
 echo "Creating PDF"
