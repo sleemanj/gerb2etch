@@ -280,6 +280,49 @@ CLEANUP=
 ( ls | grep -i  drill\\.txt >/dev/null) && cp "$(ls | grep -i drill\\.txt | head -1)" Holes.gbr && CLEANUP="$CLEANUP Holes.gbr"
 ( ls | grep -i  \\.drl >/dev/null) && cp "$(ls | grep -i \\.drl | head -1)" Holes.gbr && CLEANUP="$CLEANUP Holes.gbr"
 
+# There might be multiple drill files (Plated, Via, Unplated etc) - this is common with EasyEDA
+#  combine them all into Holes.gbr, we need to make the tools unique though, simply prefix with
+#  an index number for simplicity, this limits us to 10 tools per file, but hopefully that's enough
+#  for the vast majority of purposes.
+if [ $(ls | grep -i \\.drl | wc -l) -gt 1 ]
+then
+  idx=0
+  mergedtools=""
+  mergedholes=""
+  for DrillFile in $(ls | grep -i \\.drl)
+  do
+    SEEN_PERCENT=0
+    for line in $(cat $DrillFile | sed -r "s/;.*//" | sed -r "s/M30//" | sed -r "s/M48//")
+    do
+      line="$(echo "$line" | sed -r "s/T0/T$idx/g")"
+      if echo "$line" | grep "^%" >/dev/null
+      then
+        SEEN_PERCENT=1        
+        continue
+      fi
+      
+      if ! [ $SEEN_PERCENT -eq 1 ]
+      then
+        if [ $idx -gt 0 ]
+        then
+          # Only append tool lines not the units etc (assume all the same!)
+          if echo "$line" | grep "^T" >/dev/null
+          then
+            mergedtools="$mergedtools\n$line"
+          fi
+        else
+          mergedtools="$mergedtools\n$line"
+        fi
+      else
+        mergedholes="$mergedholes\n$line"
+      fi
+    done
+    
+    idx=$(expr $idx + 1)
+  done
+  echo -e "M48\n$mergedtools\n%\n$mergedholes\nM30" >"Holes.gbr"
+fi
+
 if layer top 
 then
   layer copper && ( ls | grep -i \\.gtl  >/dev/null ) && cp "$(ls | grep -i \\.gtl | head -1)" Top.gbr      && CLEANUP="$CLEANUP Top.gbr"
